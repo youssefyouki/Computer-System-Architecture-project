@@ -23,9 +23,41 @@ void fetch_instruction(uint32_t pc){
 }
 
 void decode_instruction(uint32_t instruction){
-
-        // Decode the instruction here
-        
+    uint32_t opcode = (instruction >> 26) & 0x3F;
+    case opcode:
+        case 0:
+        case 1:
+        case 2:
+        case 5:
+        case 8:
+        case 9:
+            //r type instructions
+            uint32_t rs = (instruction >> 21) & 0x1F;
+            uint32_t rt = (instruction >> 16) & 0x1F;
+            uint32_t rd = (instruction >> 11) & 0x1F;
+            uint32_t shamt = (instruction >> 6) & 0x1FFF;
+            // call execute
+            break;
+        case3:
+        case 4:
+        case 6:
+        case10:
+        case 11:
+            // i type instructions
+            uint32_t rs = (instruction >> 21) & 0x1F;
+            uint32_t rt = (instruction >> 16) & 0x1F;
+            uint32_t immediate = instruction & 0xFFFF;
+            // call execute
+            break;
+        case 7:
+            // j type instructions
+            uint32_t address = instruction & 0x3FFFFFF;
+            // call execute
+            break;
+        otherwise:
+            // invalid instruction
+            printf("Invalid opcode\n");
+            break;
     
 }
 
