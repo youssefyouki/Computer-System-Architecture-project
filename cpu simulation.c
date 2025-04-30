@@ -32,9 +32,9 @@ void decode_instruction(uint32_t instruction){
         case 8:
         case 9:
             //r type instructions
-            uint32_t rs = (instruction >> 21) & 0x1F;
-            uint32_t rt = (instruction >> 16) & 0x1F;
-            uint32_t rd = (instruction >> 11) & 0x1F;
+            uint32_t r1 = (instruction >> 21) & 0x1F;
+            uint32_t r2 = (instruction >> 16) & 0x1F;
+            uint32_t r3 = (instruction >> 11) & 0x1F;
             uint32_t shamt = (instruction >> 6) & 0x1FFF;
             // call execute
             break;
@@ -44,8 +44,8 @@ void decode_instruction(uint32_t instruction){
         case 10:
         case 11:
             // i type instructions
-            uint32_t rs = (instruction >> 21) & 0x1F;
-            uint32_t rt = (instruction >> 16) & 0x1F;
+            uint32_t r1 = (instruction >> 21) & 0x1F;
+            uint32_t r2 = (instruction >> 16) & 0x1F;
             uint32_t immediate = instruction & 0xFFFF;
             // call execute
             break;
@@ -61,10 +61,10 @@ void decode_instruction(uint32_t instruction){
     
 }
 
-void execute_instruction(uint32_t opcode, uint32_t rs, uint32_t rt, uint32_t rd, uint32_t shamt, uint32_t immediate){
+void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t shamt, uint32_t immediate){
     //r type instructions
                  }
-void execute_instruction(uint32_t opcode, uint32_t rs, uint32_t rt, uint32_t immediate){
+void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t immediate){
     // i type instructions
                  }
 void execute_instruction(uint32_t opcode, uint32_t address){
