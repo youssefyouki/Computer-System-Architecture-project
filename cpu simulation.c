@@ -24,7 +24,7 @@ void fetch_instruction(uint32_t pc){
 
 void decode_instruction(uint32_t instruction){
     uint32_t opcode = (instruction >> 26) & 0x3F;
-    case opcode:
+    case (opcode):{
         case 0:
         case 1:
         case 2:
@@ -38,10 +38,10 @@ void decode_instruction(uint32_t instruction){
             uint32_t shamt = (instruction >> 6) & 0x1FFF;
             // call execute
             break;
-        case3:
+        case 3:
         case 4:
         case 6:
-        case10:
+        case 10:
         case 11:
             // i type instructions
             uint32_t rs = (instruction >> 21) & 0x1F;
@@ -57,9 +57,19 @@ void decode_instruction(uint32_t instruction){
         otherwise:
             // invalid instruction
             printf("Invalid opcode\n");
-            break;
+            break;}
     
 }
+
+void execute_instruction(uint32_t opcode, uint32_t rs, uint32_t rt, uint32_t rd, uint32_t shamt, uint32_t immediate){
+    //r type instructions
+                 }
+void execute_instruction(uint32_t opcode, uint32_t rs, uint32_t rt, uint32_t immediate){
+    // i type instructions
+                 }
+void execute_instruction(uint32_t opcode, uint32_t address){
+    // j type instructions
+                 }
 
 
 int main(int argc, char const *argv[])
