@@ -88,9 +88,33 @@ void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3,
                  }
 void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t immediate){
     // i type instructions
-                 }
+    switch (opcode) {
+        case 3: // movi
+            R[r1] = immediate;
+            break;
+        case 4: //jeq
+            if (R[r1] == R[r2]) 
+                pc = pc + 1 + immediate;
+            break;
+        case 6: // xori
+            R[r1] = R[r2] ^ immediate;
+            break;
+        case 10: // movr
+            R[r1] = memory[R[r2] + immediate];
+            break;
+        case 11: // movm
+            memory[R[r2]+immediate] = R[r1];
+            break;
+        otherwise:
+        printf("wrong opcode in exec method type i\n");
+        break;
+            } 
 void execute_instruction(uint32_t opcode, uint32_t address){
     // j type instructions
+    if(opcode == 7) //jmp
+        pc = address;
+    else
+        printf("wrong opcode in exec method type j\n");       
                  }
 
 
