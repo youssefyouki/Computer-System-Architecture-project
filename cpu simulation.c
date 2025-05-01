@@ -61,7 +61,7 @@ void decode_instruction(uint32_t instruction){
     
 }
 
-void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t shamt, uint32_t immediate){
+void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t shamt){
     //r type instructions
                  }
 void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t immediate){
