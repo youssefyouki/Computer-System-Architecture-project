@@ -62,7 +62,7 @@ void decode_instruction(uint32_t instruction){
             
             execute_instruction_j(opcode, address);
             break;
-        otherwise:
+        default:
             // invalid instruction
             printf("Invalid opcode\n");
             break;}       
@@ -102,7 +102,7 @@ void execute_instruction_r(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r
             mem(0, 0, 0);
             wb(r1,R[r2] >> shamt);
             break;
-        otherwise:
+        default:
         printf("wrong opcode in exec method type r\n");
         break;
                  }}
@@ -138,7 +138,7 @@ void execute_instruction_i(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t i
             mem(1, R[r2] + immediate, r1);
             wb();
             break;
-        otherwise:
+        default:
         printf("wrong opcode in exec method type i\n");
         break;
             } }
@@ -171,7 +171,7 @@ void mem(int write,uint32_t mem_address,uint32_t register_address){
             
             wb(register_address, memory[mem_address]);
             break;
-        otherwise:
+        default:
             printf("error in mem func\n");
             break;    
     }
