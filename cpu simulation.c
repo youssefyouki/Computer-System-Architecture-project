@@ -7,7 +7,7 @@ uint32_t R[31];
 uint32_t pc;
 const uint32_t R0 = 0;
 
-
+bool stop = false;
 sem_t mutex;
 
 
@@ -16,10 +16,14 @@ int clock = 0;
 
 void fetch_instruction(uint32_t pc){
     sem_wait(&mutex);
+    if (stop) {
+        sem_post(&mutex);
+        return;
+    }else{
     uint32_t temp = memory[pc];
     pc ++;
     sem_post(&mutex);
-    decode_instruction(temp);
+    decode_instruction(temp);}
 }
 
 void decode_instruction(uint32_t instruction){
@@ -52,8 +56,9 @@ void decode_instruction(uint32_t instruction){
         case 7:
             // j type instructions
             //stop IF
+            stop = true;
             uint32_t address = instruction & 0x3FFFFFF;
-            // call execute
+            execute_instruction(opcode, address);
             break;
         otherwise:
             // invalid instruction
@@ -66,74 +71,72 @@ void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3,
     //r type instructions
     switch (opcode) {
         case 0: // add
-            R[r1] = R[r2] + R[r3];
-            // call mem
-            // call wb
+            mem(0, 0, 0);
+            wb(r1,R[r2] + R[r3]);
             break;
         case 1: // sub
-            R[r1] = R[r2] - R[r3];
-            // call mem
-            // call wb
+            mem(0, 0, 0);
+            wb(r1,R[r2] - R[r3]);
             break;
         case 2: // mul
-            R[r1] = R[r2] * R[r3];
-            // call mem
-            // call wb
+            mem(0, 0, 0);
+            wb(r1,R[r2] * R[r3]);
             break;
         case 5: // and
-            R[r1] = R[r2] & R[r3];
-            
-            // call wb
+            mem(0, 0, 0);
+            wb(r1,R[r2] & R[r3]);
             break;
-        case 8: //lsl
-            R[r1] = R[r2] << shamt;
-            // call mem
-            // call wb
+        case 8: //lsl;
+            mem(0, 0, 0);
+            wb(r1,R[r2] << shamt);
             break;
         case 9: // lsr
-            R[r1] = R[r2] >> shamt;
-            // call mem
-            // call wb
+            mem(0, 0, 0);
+            wb(r1,R[r2] >> shamt);
             break;
         otherwise:
         printf("wrong opcode in exec method type r\n");
         break;
-                 }
+                 }}
 void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t immediate){
     // i type instructions
     switch (opcode) {
         case 3: // movi
-            R[r1] = immediate;
-            // call mem
-            // call wb
+            mem(0, 0, 0);
+            wb(r1, immediate);
             break;
         case 4: //jeq
             if (R[r1] == R[r2]) 
                 pc = pc + 1 + immediate;
-            // call mem
+            mem(0, 0, 0);
+            wb();
             break;
         case 6: // xori
-            R[r1] = R[r2] ^ immediate; //r2 xor immediate
-            // call mem
-            // call wb
+            mem(0, 0, 0);
+            wb(r1,R[r2] ^ immediate); //r2 xor immediate
+
             break;
         case 10: // movr
-            //call mem function to read from mem
             //R[r1] = memory[R[r2] + immediate];
+            mem(2, R[r2] + immediate, r1);
             break;
         case 11: // movm
-            //call mem function to write to mem
            // memory[R[r2]+immediate] = R[r1];
+           mem(1, R[r2] + immediate, r1);
+           wb();
             break;
         otherwise:
         printf("wrong opcode in exec method type i\n");
         break;
-            } 
+            } }
 void execute_instruction(uint32_t opcode, uint32_t address){
     // j type instructions
-    if(opcode == 7) //jmp
-        pc = (pc & 0xF0000000) | address;  //PC[31:28] || address;
+    if(opcode == 7) {//jmp
+        mem(0, 0, 0);
+        pc  = (pc & 0xF0000000) | address);
         //activte IF
+        stop = false;
+        }
     else
         printf("wrong opcode in exec method type j\n");       
                  }
