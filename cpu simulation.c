@@ -63,6 +63,16 @@ void decode_instruction(uint32_t instruction){
 
 void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t shamt){
     //r type instructions
+    switch (opcode) {
+        case 0: // add
+            R[r1] = R[r2] + R[r3];
+            break;
+        case 1: // sub
+            R[r1] = R[r2] - R[r3];
+            break;
+        case 2: // mul
+            R[r1] = R[r2] * R[r3];
+            break;
                  }
 void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t immediate){
     // i type instructions
