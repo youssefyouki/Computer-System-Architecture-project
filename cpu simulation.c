@@ -73,6 +73,15 @@ void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3,
         case 2: // mul
             R[r1] = R[r2] * R[r3];
             break;
+        case 5: // and
+            R[r1] = R[r2] & R[r3];
+            break;
+        case 8: //lsl
+            R[r1] = R[r2] << shamt;
+            break;
+        case 9: // lsr
+            R[r1] = R[r2] >> shamt;
+            break;
                  }
 void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t immediate){
     // i type instructions
