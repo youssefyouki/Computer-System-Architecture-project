@@ -139,6 +139,33 @@ void execute_instruction(uint32_t opcode, uint32_t address){
                  }
 
 
+
+void mem(int write,uint32_t mem_address,uint32_t register_address){
+    sem_wait(&mutex);
+    case (write){
+        case 0:
+            break;
+        case 1:
+            memory[mem_address] = R[register_address];
+            break;
+        case 2:
+            wb(register_address, memory[mem_address]);
+            break;
+        otherwise:
+            printf("error in mem func\n");
+            break;    
+    }
+    sem_post(&mutex);
+
+}
+
+void wb(uint32_t address,uint32_t data){
+    R[address] = data;
+}
+void wb(){
+
+}
+
 int main(int argc, char const *argv[])
 {
     sem_int(&mutex, 0, 1);
