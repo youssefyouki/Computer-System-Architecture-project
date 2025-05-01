@@ -67,21 +67,33 @@ void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3,
     switch (opcode) {
         case 0: // add
             R[r1] = R[r2] + R[r3];
+            // call mem
+            // call wb
             break;
         case 1: // sub
             R[r1] = R[r2] - R[r3];
+            // call mem
+            // call wb
             break;
         case 2: // mul
             R[r1] = R[r2] * R[r3];
+            // call mem
+            // call wb
             break;
         case 5: // and
             R[r1] = R[r2] & R[r3];
+            
+            // call wb
             break;
         case 8: //lsl
             R[r1] = R[r2] << shamt;
+            // call mem
+            // call wb
             break;
         case 9: // lsr
             R[r1] = R[r2] >> shamt;
+            // call mem
+            // call wb
             break;
         otherwise:
         printf("wrong opcode in exec method type r\n");
@@ -92,13 +104,18 @@ void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t imm
     switch (opcode) {
         case 3: // movi
             R[r1] = immediate;
+            // call mem
+            // call wb
             break;
         case 4: //jeq
             if (R[r1] == R[r2]) 
                 pc = pc + 1 + immediate;
+            // call mem
             break;
         case 6: // xori
             R[r1] = R[r2] ^ immediate; //r2 xor immediate
+            // call mem
+            // call wb
             break;
         case 10: // movr
             //call mem function to read from mem
