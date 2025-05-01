@@ -51,6 +51,7 @@ void decode_instruction(uint32_t instruction){
             break;
         case 7:
             // j type instructions
+            //stop IF
             uint32_t address = instruction & 0x3FFFFFF;
             // call execute
             break;
@@ -97,13 +98,15 @@ void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t imm
                 pc = pc + 1 + immediate;
             break;
         case 6: // xori
-            R[r1] = R[r2] ^ immediate;
+            R[r1] = R[r2] ^ immediate; //r2 xor immediate
             break;
         case 10: // movr
-            R[r1] = memory[R[r2] + immediate];
+            //call mem function to read from mem
+            //R[r1] = memory[R[r2] + immediate];
             break;
         case 11: // movm
-            memory[R[r2]+immediate] = R[r1];
+            //call mem function to write to mem
+           // memory[R[r2]+immediate] = R[r1];
             break;
         otherwise:
         printf("wrong opcode in exec method type i\n");
@@ -112,7 +115,8 @@ void execute_instruction(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t imm
 void execute_instruction(uint32_t opcode, uint32_t address){
     // j type instructions
     if(opcode == 7) //jmp
-        pc = address;
+        pc = (pc & 0xF0000000) | address;  //PC[31:28] || address;
+        //activte IF
     else
         printf("wrong opcode in exec method type j\n");       
                  }
