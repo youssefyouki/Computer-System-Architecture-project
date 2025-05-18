@@ -10,7 +10,11 @@ bool stop = false;
 int clock;
 
 typedef struct {
+    bool wb;
+    bool mem;
+    int write_read; // 0:no ,1: read, 2: write
     int stage;  // 0: IF, 1: ID, 2: EX, 3: MEM, 4: WB
+    uint32_t temp_address;
     uint8_t opcode;
     uint8_t r1, r2, r3;
     uint16_t shamt;       // for R-type
@@ -20,15 +24,15 @@ typedef struct {
 
 } Pipeline;
 
-void fetch_instruction(uint32_t pc){
-    uint32_t temp = memory[pc];
+void fetch_instruction(Pipeline *pipeline){
+    pipeline->temp_reg = memory[pc];
     pc ++;
     
 }
 
-void decode_instruction(uint32_t instruction){
-    uint32_t opcode = (instruction >> 26) & 0x3F;
-    switch (opcode){
+void decode_instruction(Pipeline *pipeline){
+    pipeline->opcode = (pipeline->temp_reg >> 26) & 0x3F;
+    switch (pipeline->opcode){
         case 0:
         case 1:
         case 2:
@@ -36,12 +40,10 @@ void decode_instruction(uint32_t instruction){
         case 8:
         case 9:
             //r type instructions
-            uint32_t r1 = (instruction >> 21) & 0x1F;
-            uint32_t r2 = (instruction >> 16) & 0x1F;
-            uint32_t r3 = (instruction >> 11) & 0x1F;
-            uint32_t shamt = (instruction >> 6) & 0x1FFF;
-            
-            execute_instruction_r(opcode, r1, r2, r3, shamt);
+            pipeline->r1 = (pipeline->temp_reg >> 21) & 0x1F;
+            pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
+            pipeline->r3 = (pipeline->temp_reg >> 11) & 0x1F;
+            pipeline->shamt = (pipeline->temp_reg >> 6) & 0x1FFF;
             break;
         case 3:
         case 4:
@@ -49,19 +51,15 @@ void decode_instruction(uint32_t instruction){
         case 10:
         case 11:
             // i type instructions
-            uint32_t r1 = (instruction >> 21) & 0x1F;
-            uint32_t r2 = (instruction >> 16) & 0x1F;
-            uint32_t immediate = instruction & 0xFFFF;
-            
-            execute_instruction_i(opcode, r1, r2, immediate);
+            pipeline->r1 = (pipeline->temp_reg >> 21) & 0x1F;
+            pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
+            pipeline->immediate = pipeline->temp_reg & 0xFFFF;
             break;
         case 7:
             // j type instructions
             //stop IF
             stop = true;
-            uint32_t address = instruction & 0x3FFFFFF;
-            
-            execute_instruction_j(opcode, address);
+            pipeline-> address = pipeline->temp_reg & 0x3FFFFFF;
             break;
         default:
             // invalid instruction
@@ -70,122 +68,132 @@ void decode_instruction(uint32_t instruction){
     
 }
 
-void execute_instruction_r(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t shamt){
+void execute_instruction_r(Pipeline *pipeline){
     //r type instructions
-    switch (opcode) {
+    switch (pipeline->opcode){ 
         case 0: // add
-            
-            mem(0, 0, 0);
-            wb(r1,R[r2] + R[r3]);
+            pipeline->wb = true;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = R[pipeline->r2] + R[pipeline->r3];
             break;
         case 1: // sub
             
-            mem(0, 0, 0);
-            wb(r1,R[r2] - R[r3]);
+        pipeline->wb = true;
+        pipeline->temp_address = pipeline->r1;
+        pipeline->temp_reg = R[pipeline->r2] - R[pipeline->r3];
             break;
         case 2: // mul
             
-            mem(0, 0, 0);
-            wb(r1,R[r2] * R[r3]);
+        pipeline->wb = true;
+        pipeline->temp_address = pipeline->r1;
+        pipeline->temp_reg = R[pipeline->r2] * R[pipeline->r3];
             break;
         case 5: // and
             
-            mem(0, 0, 0);
-            wb(r1,R[r2] & R[r3]);
+        pipeline->wb = true;
+        pipeline->temp_address = pipeline->r1;
+        pipeline->temp_reg = R[pipeline->r2] & R[pipeline->r3];
             break;
         case 8: //lsl;
-            
-            mem(0, 0, 0);
-            wb(r1,R[r2] << shamt);
+        pipeline->wb = true;
+        pipeline->temp_address = pipeline->r1;
+        pipeline->temp_reg = R[pipeline->r2] << pipeline->shamt;
             break;
         case 9: // lsr
-            wb(r1,R[r2] >> shamt);
+        pipeline->wb = true;
+        pipeline->temp_address = pipeline->r1;
+        pipeline->temp_reg = R[pipeline->r2] >> pipeline->shamt;
             break;
         otherwise:
         printf("wrong opcode in exec method type r\n");
         break;
                  }}
-void execute_instruction_i(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t immediate){
+void execute_instruction_i(Pipeline *pipeline){
     // i type instructions
-    switch (opcode) {
+    switch (pipeline->opcode){ 
         case 3: // movi
             
-            mem(0, 0, 0);
-            wb(r1, immediate);
+            pipeline->wb = true;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = pipeline->immediate;
             break;
         case 4: //jeq
-            if (R[r1] == R[r2]) 
-                pc = pc + 1 + immediate;
-            
-            mem(0, 0, 0);
-            //wb();
+            if (R[pipeline->r1] == R[pipeline->r2]){ 
+                pc = pc + 1 + pipeline->immediate;}
             break;
         case 6: // xori
-            
-            mem(0, 0, 0);
-            wb(r1,R[r2] ^ immediate); //r2 xor immediate
+            pipeline->wb = true;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = R[pipeline->r2] ^ pipeline->immediate;//r2 xor immediate
 
             break;
         case 10: // movr
             //R[r1] = memory[R[r2] + immediate];
-                
-            mem(2, R[r2] + immediate, r1);
+            pipeline->mem = true;
+            pipeline->write_read = 2;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = R[pipeline->r2] + pipeline->immediate;
             break;
         case 11: // movm
            // memory[R[r2]+immediate] = R[r1];
             
-            mem(1, R[r2] + immediate, r1);
-            //wb();
+           pipeline->mem = true;
+           pipeline->write_read = 1;
+           pipeline->temp_address = R[pipeline->r2] + pipeline->immediate;
+           pipeline->r1 = pipeline->r1;
             break;
-        default:
+        otherwise:
         printf("wrong opcode in exec method type i\n");
         break;
             } }
-void execute_instruction_j(uint32_t opcode, uint32_t address){
+void execute_instruction_j(Pipeline *pipeline){
     // j type instructions
-    if(opcode == 7) {//jmp
-        
-        mem(0, 0, 0);
-        pc  = (pc & 0xF0000000) | address;
-        //activte IF
-        stop = false;
-        }
+    if(pipeline->opcode == 7) {//jmp
+        pc  = (pc & 0xF0000000) | pipeline->address; }
     else
         printf("wrong opcode in exec method type j\n");       
                  }
 
 
 
-void mem(int write,uint32_t mem_address,uint32_t register_address){
-    switch (write){
+void mem(Pipeline *pipeline){
+    if(pipeline->mem == false){
+        return;
+    }
+    switch (pipeline->write_read){
         case 0:
             
             break;
         case 1:
-            memory[mem_address] = R[register_address];
+            memory[pipeline->temp_address] = pipeline->temp_reg;
             
             break;
         case 2:
-            
-            wb(register_address, memory[mem_address]);
+            pipeline->wb = true;
+            pipeline->temp_reg =memory[pipeline->temp_address];
+            pipeline->temp_address = pipeline->r1;
             break;
         default:
             printf("error in mem func\n");
             break;    
     }
+    pipeline->mem = false;
+    pipeline->write_read = 0;
 
 }
 
-void wb(uint32_t address,uint32_t data){
-    R[address] = data;
+void wb(Pipeline *pipeline){
+    if(pipeline->wb == false){
+        return;
+    }
+    R[pipeline->temp_address] = pipeline->temp_reg;
+    pipeline->wb = false;
     
 }
-void wb(){
-    
-}
+
 
 int main(int argc, char const *argv[]){
-    loaddata();
+    //loaddata();
     pc = 0;
     clock = 0;
     
