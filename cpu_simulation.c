@@ -1,204 +1,175 @@
-#include <stdint.h>
+#include <stdio.h>
 #include <stdbool.h>
 
-uint32_t memory[2048];
-uint32_t R[31];
-uint32_t pc;
-const uint32_t R0 = 0;
-
+int memory[2048];
+int R[32];
+int pc;
 bool stop = false;
 int clock;
 
 typedef struct {
     bool wb;
     bool mem;
-    int write_read; // 0:no ,1: read, 2: write
-    int stage;  // 0: IF, 1: ID, 2: EX, 3: MEM, 4: WB
-    uint32_t temp_address;
-    uint8_t opcode;
-    uint8_t r1, r2, r3;
-    uint16_t shamt;       // for R-type
-    int32_t immediate;    // for I-type
-    uint32_t address;     // for J-type
-    uint32_t temp_reg;
-
+    int write_read;  // 0: no access, 1: write to memory, 2: read from memory
+    int stage;       // 0: IF, 1: ID, 2: EX, 3: MEM, 4: WB
+    int temp_address;
+    int opcode;
+    int r1, r2, r3;
+    int shamt;       // for R-type
+    int immediate;   // for I-type 
+    int address;     // for J-type 
+    int temp_reg;
 } Pipeline;
 
-void fetch_instruction(Pipeline *pipeline){
+void fetch_instruction(Pipeline *pipeline) {
     pipeline->temp_reg = memory[pc];
-    pc ++;
-    
+    pc++;
 }
 
-void decode_instruction(Pipeline *pipeline){
+void decode_instruction(Pipeline *pipeline) {
     pipeline->opcode = (pipeline->temp_reg >> 26) & 0x3F;
-    switch (pipeline->opcode){
-        case 0:
-        case 1:
-        case 2:
-        case 5:
-        case 8:
-        case 9:
-            //r type instructions
+
+    switch (pipeline->opcode) {
+        case 0: case 1: case 2: case 5: case 8: case 9:
+            // R-type
             pipeline->r1 = (pipeline->temp_reg >> 21) & 0x1F;
             pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
             pipeline->r3 = (pipeline->temp_reg >> 11) & 0x1F;
             pipeline->shamt = (pipeline->temp_reg >> 6) & 0x1FFF;
             break;
-        case 3:
-        case 4:
-        case 6:
-        case 10:
-        case 11:
-            // i type instructions
+        case 3: case 4: case 6: case 10: case 11:
+            // I-type
             pipeline->r1 = (pipeline->temp_reg >> 21) & 0x1F;
             pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
-            pipeline->immediate = pipeline->temp_reg & 0xFFFF;
+
+            pipeline->immediate = pipeline->temp_reg & 0x3FFFF;
+            if (pipeline->immediate & (1 << 17))
+                pipeline->immediate |= 0xFFFC0000;
             break;
         case 7:
-            // j type instructions
-            //stop IF
+            // J-type
+            pipeline->address = pipeline->temp_reg & 0x0FFFFFFF;
             stop = true;
-            pipeline-> address = pipeline->temp_reg & 0x3FFFFFF;
             break;
         default:
-            // invalid instruction
             printf("Invalid opcode\n");
-            break;}       
-    
+            break;
+    }
 }
 
-void execute_instruction_r(Pipeline *pipeline){
-    //r type instructions
-    switch (pipeline->opcode){ 
-        case 0: // add
+void execute_instruction_r(Pipeline *pipeline) {
+    switch (pipeline->opcode) {
+        case 0:  // ADD
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
             pipeline->temp_reg = R[pipeline->r2] + R[pipeline->r3];
             break;
-        case 1: // sub
-            
-        pipeline->wb = true;
-        pipeline->temp_address = pipeline->r1;
-        pipeline->temp_reg = R[pipeline->r2] - R[pipeline->r3];
+        case 1:  // SUB
+            pipeline->wb = true;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = R[pipeline->r2] - R[pipeline->r3];
             break;
-        case 2: // mul
-            
-        pipeline->wb = true;
-        pipeline->temp_address = pipeline->r1;
-        pipeline->temp_reg = R[pipeline->r2] * R[pipeline->r3];
+        case 2:  // MUL
+            pipeline->wb = true;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = R[pipeline->r2] * R[pipeline->r3];
             break;
-        case 5: // and
-            
-        pipeline->wb = true;
-        pipeline->temp_address = pipeline->r1;
-        pipeline->temp_reg = R[pipeline->r2] & R[pipeline->r3];
+        case 5:  // AND
+            pipeline->wb = true;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = R[pipeline->r2] & R[pipeline->r3];
             break;
-        case 8: //lsl;
-        pipeline->wb = true;
-        pipeline->temp_address = pipeline->r1;
-        pipeline->temp_reg = R[pipeline->r2] << pipeline->shamt;
+        case 8:  // LSL
+            pipeline->wb = true;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = R[pipeline->r2] << pipeline->shamt;
             break;
-        case 9: // lsr
-        pipeline->wb = true;
-        pipeline->temp_address = pipeline->r1;
-        pipeline->temp_reg = R[pipeline->r2] >> pipeline->shamt;
+        case 9:  // LSR
+            pipeline->wb = true;
+            pipeline->temp_address = pipeline->r1;
+            pipeline->temp_reg = R[pipeline->r2] >> pipeline->shamt;
             break;
-        otherwise:
-        printf("wrong opcode in exec method type r\n");
-        break;
-                 }}
-void execute_instruction_i(Pipeline *pipeline){
-    // i type instructions
-    switch (pipeline->opcode){ 
-        case 3: // movi
-            
+        default:
+            printf("Invalid R-type opcode\n");
+            break;
+    }
+}
+
+void execute_instruction_i(Pipeline *pipeline) {
+    switch (pipeline->opcode) {
+        case 3:  // MOVI
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
             pipeline->temp_reg = pipeline->immediate;
             break;
-        case 4: //jeq
-            if (R[pipeline->r1] == R[pipeline->r2]){ 
-                pc = pc + 1 + pipeline->immediate;}
+        case 4:  // JEQ
+            if (R[pipeline->r1] == R[pipeline->r2]) {
+                pc = pc + 1 + pipeline->immediate;
+            }
             break;
-        case 6: // xori
+        case 6:  // XORI
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = R[pipeline->r2] ^ pipeline->immediate;//r2 xor immediate
-
+            pipeline->temp_reg = R[pipeline->r2] ^ pipeline->immediate;
             break;
-        case 10: // movr
-            //R[r1] = memory[R[r2] + immediate];
+        case 10:  // MOVR
             pipeline->mem = true;
             pipeline->write_read = 2;
             pipeline->temp_address = pipeline->r1;
             pipeline->temp_reg = R[pipeline->r2] + pipeline->immediate;
             break;
-        case 11: // movm
-           // memory[R[r2]+immediate] = R[r1];
-            
-           pipeline->mem = true;
-           pipeline->write_read = 1;
-           pipeline->temp_address = R[pipeline->r2] + pipeline->immediate;
-           pipeline->r1 = pipeline->r1;
+        case 11:  // MOVM
+            pipeline->mem = true;
+            pipeline->write_read = 1;
+            pipeline->temp_address = R[pipeline->r2] + pipeline->immediate;
             break;
-        otherwise:
-        printf("wrong opcode in exec method type i\n");
-        break;
-            } }
-void execute_instruction_j(Pipeline *pipeline){
-    // j type instructions
-    if(pipeline->opcode == 7) {//jmp
-        pc  = (pc & 0xF0000000) | pipeline->address; }
-    else
-        printf("wrong opcode in exec method type j\n");       
-                 }
-
-
-
-void mem(Pipeline *pipeline){
-    if(pipeline->mem == false){
-        return;
+        default:
+            printf("Invalid I-type opcode\n");
+            break;
     }
-    switch (pipeline->write_read){
-        case 0:
-            
-            break;
+}
+
+void execute_instruction_j(Pipeline *pipeline) {
+    if (pipeline->opcode == 7) {  // JMP
+        pc = (pc & 0xF0000000) | pipeline->address;
+    } else {
+        printf("Invalid J-type opcode\n");
+    }
+}
+
+void mem_stage(Pipeline *pipeline) {
+    if (!pipeline->mem) return;
+
+    switch (pipeline->write_read) {
         case 1:
-            memory[pipeline->temp_address] = pipeline->temp_reg;
-            
+            memory[pipeline->temp_address] = R[pipeline->r1];
             break;
         case 2:
             pipeline->wb = true;
-            pipeline->temp_reg =memory[pipeline->temp_address];
+            pipeline->temp_reg = memory[pipeline->temp_reg];
             pipeline->temp_address = pipeline->r1;
             break;
         default:
-            printf("error in mem func\n");
-            break;    
+            printf("Invalid memory operation\n");
+            break;
     }
+
     pipeline->mem = false;
     pipeline->write_read = 0;
-
 }
 
-void wb(Pipeline *pipeline){
-    if(pipeline->wb == false){
-        return;
-    }
-    R[pipeline->temp_address] = pipeline->temp_reg;
+void wb_stage(Pipeline *pipeline) {
+    if (!pipeline->wb) return;
+    if (pipeline->temp_address != 0)
+        R[pipeline->temp_address] = pipeline->temp_reg;
     pipeline->wb = false;
-    
 }
 
-
-int main(int argc, char const *argv[]){
-    //loaddata();
+int main(int argc, char const *argv[]) {
     pc = 0;
     clock = 0;
+    R[0] = 0;
     
-
-
 
     return 0;
 }
