@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include <stdbool.h>
-#include <pthread.h>
 
 uint32_t memory[2048];
 uint32_t R[31];
@@ -8,26 +7,28 @@ uint32_t pc;
 const uint32_t R0 = 0;
 
 bool stop = false;
-sem_t mutex;
 int clock;
 
+typedef struct {
+    int stage;  // 0: IF, 1: ID, 2: EX, 3: MEM, 4: WB
+    uint8_t opcode;
+    uint8_t r1, r2, r3;
+    uint16_t shamt;       // for R-type
+    int32_t immediate;    // for I-type
+    uint32_t address;     // for J-type
+    uint32_t temp_reg;
+
+} Pipeline;
 
 void fetch_instruction(uint32_t pc){
-    sem_wait(&mutex);
-    if (stop) {
-        sem_post(&mutex);
-        return;
-    }else{
     uint32_t temp = memory[pc];
     pc ++;
     
-    sem_post(&mutex);
-    decode_instruction(temp);}
 }
 
 void decode_instruction(uint32_t instruction){
     uint32_t opcode = (instruction >> 26) & 0x3F;
-    switch (opcode):{
+    switch (opcode){
         case 0:
         case 1:
         case 2:
@@ -98,11 +99,9 @@ void execute_instruction_r(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r
             wb(r1,R[r2] << shamt);
             break;
         case 9: // lsr
-            
-            mem(0, 0, 0);
             wb(r1,R[r2] >> shamt);
             break;
-        default:
+        otherwise:
         printf("wrong opcode in exec method type r\n");
         break;
                  }}
@@ -119,7 +118,7 @@ void execute_instruction_i(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t i
                 pc = pc + 1 + immediate;
             
             mem(0, 0, 0);
-            wb();
+            //wb();
             break;
         case 6: // xori
             
@@ -136,7 +135,7 @@ void execute_instruction_i(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t i
            // memory[R[r2]+immediate] = R[r1];
             
             mem(1, R[r2] + immediate, r1);
-            wb();
+            //wb();
             break;
         default:
         printf("wrong opcode in exec method type i\n");
@@ -147,7 +146,7 @@ void execute_instruction_j(uint32_t opcode, uint32_t address){
     if(opcode == 7) {//jmp
         
         mem(0, 0, 0);
-        pc  = (pc & 0xF0000000) | address);
+        pc  = (pc & 0xF0000000) | address;
         //activte IF
         stop = false;
         }
@@ -158,7 +157,6 @@ void execute_instruction_j(uint32_t opcode, uint32_t address){
 
 
 void mem(int write,uint32_t mem_address,uint32_t register_address){
-    sem_wait(&mutex);
     switch (write){
         case 0:
             
@@ -175,7 +173,6 @@ void mem(int write,uint32_t mem_address,uint32_t register_address){
             printf("error in mem func\n");
             break;    
     }
-    sem_post(&mutex);
 
 }
 
@@ -188,7 +185,6 @@ void wb(){
 }
 
 int main(int argc, char const *argv[]){
-    sem_init(&mutex, 0, 1);
     loaddata();
     pc = 0;
     clock = 0;
