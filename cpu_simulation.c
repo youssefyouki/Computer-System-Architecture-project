@@ -98,11 +98,11 @@ void execute_instruction_r(uint32_t opcode, uint32_t r1, uint32_t r2, uint32_t r
             wb(r1,R[r2] << shamt);
             break;
         case 9: // lsr
-            
+            s
             mem(0, 0, 0);
             wb(r1,R[r2] >> shamt);
             break;
-        default:
+        default
         printf("wrong opcode in exec method type r\n");
         break;
                  }}
@@ -147,7 +147,7 @@ void execute_instruction_j(uint32_t opcode, uint32_t address){
     if(opcode == 7) {//jmp
         
         mem(0, 0, 0);
-        pc  = (pc & 0xF0000000) | address);
+        pc  = (pc & 0xF0000000) | address;
         //activte IF
         stop = false;
         }
