@@ -4,7 +4,8 @@
 int memory[2048];
 int R[32];
 int pc;
-bool stop = false;
+bool IF = false;
+bool MEM = false;
 int clock;
 
 typedef struct {
@@ -151,6 +152,51 @@ void wb_stage(Pipeline *pipeline) {
     if (pipeline->temp_address != 0)
         R[pipeline->temp_address] = pipeline->temp_reg;
     pipeline->wb = false;
+}
+
+void pipeline_stages(Pipeline *pipeline) {
+switch (pipeline->stage) {
+case 0: // IF
+    if (MEM) {
+        pipeline->stage = 0;
+        return;
+    }
+    else{
+    IF = true;   
+    fetch_instruction(pipeline); 
+    clock ++;
+    pipeline->stage = 1;
+    IF = false;
+    }
+    break;
+case 1: // ID
+    decode_instruction(pipeline);
+    clock += 2;
+    pipeline->stage = 2;
+    break;
+case 2: // EX
+    execute_instruction(pipeline);
+    clock += 2;
+    pipeline->stage = 3;
+    break;
+case 3: // MEM
+    if(IF){
+        pipeline->stage = 3;
+        return;
+    }else{
+    MEM = true;   
+    mem_stage(pipeline);
+    clock ++;
+    pipeline->stage = 4;
+    MEM = false;
+    }
+    break;
+case 4: // WB
+    wb_stage(pipeline);
+    clock ++;
+    pipeline->stage = 0;
+    break;
+}
 }
 
 
