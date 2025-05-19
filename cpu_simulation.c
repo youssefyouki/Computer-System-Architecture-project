@@ -153,26 +153,27 @@ void wb_stage(Pipeline *pipeline) {
     pipeline->wb = false;
 }
 
-void loadProgram(char *filename) {
-    File *file = fopen(filename, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        return ;
+void loadProgram(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        perror("fopen");            
+        exit(EXIT_FAILURE);       
     }
     char line[256];
-    int addr=0;
-    while (addr < 1024 && fgets(line, sizeof line, fp)) {
+    int addr = 0;
+    while (addr < 1024 && fgets(line, sizeof line, file)) {
         size_t len = strlen(line);
         if (len > 0 && line[len - 1] == '\n') {
             line[len - 1] = '\0';
         }
-        if (line[0] == '\0' || line[0] == ';') {
+            if (line[0] == '\0' || line[0] == ';') {
             continue;
         }
         memory[addr++] = assemble_line(line);
     }
-    fclose(fp);
+    fclose(file);
 }
+
 
 int main(int argc, char const *argv[]) {
     //for (int i = 0; i < NUM_REGS; i++) R[i] = 0;
