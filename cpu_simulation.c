@@ -158,6 +158,7 @@ void wb_stage(Pipeline *pipeline) {
 
 int main(int argc, char const *argv[]) {
     for (int i = 0; i < NUM_REGS; i++) R[i] = 0;
+    //for (int i = 0; i < NUM_REGS; i++) R[i] = 0;
     //loadMemory(NULL);
     
 
