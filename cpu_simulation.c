@@ -153,10 +153,8 @@ void wb_stage(Pipeline *pipeline) {
     pipeline->wb = false;
 }
 
-void loadMemory(char *filename) {
-    FILE *file;
-    const char *filepath = "Assemb.txt";
-    file = fopen(filepath, "r");
+void loadProgram(char *filename) {
+    File *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Error opening file");
         return ;
