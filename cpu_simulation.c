@@ -50,7 +50,6 @@ void decode_instruction(Pipeline *pipeline) {
         case 7:
             // J-type
             pipeline->address = pipeline->temp_reg & 0x0FFFFFFF;
-            stop = true;
             break;
         default:
             printf("Invalid opcode\n");
