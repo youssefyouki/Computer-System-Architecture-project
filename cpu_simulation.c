@@ -1,5 +1,10 @@
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <assert.h>
+#include <ctype.h>
 
 int memory[2048];
 int R[32];
@@ -153,32 +158,144 @@ void wb_stage(Pipeline *pipeline) {
     pipeline->wb = false;
 }
 
-void loadProgram(const char *filename) {
+void readFromFile(char *filename) {
     FILE *file = fopen(filename, "r");
-    if (!file) {
-        perror("fopen");            
-        exit(EXIT_FAILURE);       
+    if (file == NULL) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
     }
-    char line[256];
-    int addr = 0;
-    while (addr < 1024 && fgets(line, sizeof line, file)) {
-        size_t len = strlen(line);
-        if (len > 0 && line[len - 1] == '\n') {
-            line[len - 1] = '\0';
+char line[256];
+    int address = 0;
+
+    while (fgets(line, sizeof(line), file)) {
+        if (line[0] == '#') continue; // Skip comments
+        if (sscanf(line, "%d", &memory[address]) != 1) {
+            fprintf(stderr, "Error reading memory at address %d\n", address);
+            exit(EXIT_FAILURE);
         }
-            if (line[0] == '\0' || line[0] == ';') {
-            continue;
-        }
-        memory[addr++] = assemble_line(line);
+        address++;
+    }
+    if(ferror(file)) {
+        perror("Error reading file");
     }
     fclose(file);
 }
 
-
-int main(int argc, char const *argv[]) {
-    //for (int i = 0; i < NUM_REGS; i++) R[i] = 0;
-    //loadMemory(NULL);
-    
-
-    return 0;
+static int get_opcode(const char *mnem) {
+    if      (strcmp(mnem, "ADD")==0)   return 0;
+    else if (strcmp(mnem, "SUB")==0)   return 1;
+    else if (strcmp(mnem, "MUL")==0)   return 2;
+    else if (strcmp(mnem, "MOVI")==0)  return 3;
+    else if (strcmp(mnem, "JEQ")==0)   return 4;
+    else if (strcmp(mnem, "AND")==0)   return 5;
+    else if (strcmp(mnem, "XORI")==0)  return 6;
+    else if (strcmp(mnem, "JMP")==0)   return 7;
+    else if (strcmp(mnem, "LSL")==0)   return 8;
+    else if (strcmp(mnem, "LSR")==0)   return 9;
+    else if (strcmp(mnem, "MOVR")==0)  return 10;
+    else if (strcmp(mnem, "MOVM")==0)  return 11;
+    fprintf(stderr, "Unknown mnemonic '%s'\n", mnem);
+    exit(EXIT_FAILURE);
 }
+
+static int parse_reg(const char *tok) {
+    if ((tok[0]=='R' || tok[0]=='r') && isdigit(tok[1])) {
+        int r = atoi(tok+1);
+        if (r >= 0 && r <= 31) return r;
+    }
+    fprintf(stderr, "Invalid register '%s'\n", tok);
+    exit(EXIT_FAILURE);
+}
+
+static uint32_t assemble_inst(char *line) {
+    char *mnem = strtok(line, " \t\n");
+    if (!mnem || mnem[0]=='#') return UINT32_MAX;  // skip blank/comment
+
+    int opc = get_opcode(mnem);
+    uint32_t inst = (opc & 0xF) << 28;
+
+    switch (opc) {
+      /* R-format: OPCODE R1 R2 R3 SHAMT */
+      case 0: case 1: case 2: case 5: case 8: case 9: {
+        int r1 = parse_reg(strtok(NULL, " ,\t\n"));
+        int r2 = parse_reg(strtok(NULL, " ,\t\n"));
+        int r3 = parse_reg(strtok(NULL, " ,\t\n"));
+        int sh = atoi(strtok(NULL, " ,\t\n")) & 0x1FFF;  // 13 bits
+        inst |= (r1 & 0x1F) << 23
+             | (r2 & 0x1F) << 18
+             | (r3 & 0x1F) << 13
+             |  sh;
+        break;
+      }
+      
+      case 7: {
+        int addr = atoi(strtok(NULL, " ,\t\n")) & 0x0FFFFFFF;  // 28 bits
+        inst |= addr;
+        break;
+      }
+      default:
+        fprintf(stderr, "Unhandled opcode %d\n", opc);
+        exit(EXIT_FAILURE);
+    }
+
+    return inst;
+}
+
+void translate_assembly(const char *filename) {
+    FILE *f = fopen(filename, "r");
+    if (!f) { perror("fopen"); exit(EXIT_FAILURE); }
+
+    char line[256];
+    int addr = 0;
+    while (fgets(line, sizeof(line), f)) {
+        uint32_t code = assemble_inst(line);
+        if (code == UINT32_MAX) continue;  // skipped comment/blank
+        if (addr >= sizeof(memory)/sizeof(memory[0])) {
+            fprintf(stderr, "Program too large for memory\n");
+            break;
+        }
+        memory[addr++] = code;
+    }
+    fclose(f);
+}
+
+
+/* (… paste your definitions of memory[], readFromFile(), etc. here …) */
+
+int main(int argc, char *argv[]) {
+    // 1. Prepare a small test file on disk
+     char *test_filename = "test_memory.txt";
+    FILE *tf = fopen(test_filename, "w");
+    if (!tf) {
+        perror("fopen");
+        return EXIT_FAILURE;
+    }
+    // write 5 known values, one per line
+    fprintf(tf, "# sample memory contents\n");
+    fprintf(tf, "42\n");
+    fprintf(tf, "  -7\n");
+    fprintf(tf, "12345\n");
+    fprintf(tf, "0\n");
+    fprintf(tf, "999\n");
+    fclose(tf);
+
+    // 2. Call readFromFile
+    readFromFile(test_filename);
+
+    // 3. Check (or print) the results
+    // You can either print them:
+    for (int i = 0; i < 5; i++) {
+        printf("memory[%d] = %d\n", i, memory[i]);
+    }
+
+    // … or use assertions to “fail fast” on mismatch:
+    assert(memory[0] == 42);
+    assert(memory[1] == -7);
+    assert(memory[2] == 12345);
+    assert(memory[3] == 0);
+    assert(memory[4] == 999);
+
+    printf("readFromFile test passed!\n");
+    return EXIT_SUCCESS;
+}
+

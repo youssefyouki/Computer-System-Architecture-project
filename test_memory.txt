@@ -1,0 +1,6 @@
+# sample memory contents
+42
+  -7
+12345
+0
+999
