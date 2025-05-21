@@ -9,6 +9,7 @@ bool MEM = false;
 int clock;
 
 typedef struct {
+    int stage_clock;
     bool wb;
     bool mem;
     int write_read;  // 0: no access, 1: write to memory, 2: read from memory
@@ -169,14 +170,24 @@ case 0: // IF
     }
     break;
 case 1: // ID
-    decode_instruction(pipeline);
-    clock += 2;
-    pipeline->stage = 2;
+    if(pipeline->stage_clock == 0){
+        decode_instruction(pipeline);
+        clock ++;
+        pipeline->stage_clock++;}
+    else{if(pipeline->stage_clock == 1){
+        clock ++;
+        pipeline->stage_clock = 0;
+        pipeline->stage = 2;}}
     break;
 case 2: // EX
-    execute_instruction(pipeline);
-    clock += 2;
-    pipeline->stage = 3;
+    if(pipeline->stage_clock == 0){
+        execute_instruction(pipeline);
+        clock ++;
+        pipeline->stage_clock++;}
+    else{if(pipeline->stage_clock == 1){
+        clock ++;
+        pipeline->stage_clock = 0;
+        pipeline->stage = 3;}}
     break;
 case 3: // MEM
     if(IF){
@@ -202,9 +213,7 @@ case 4: // WB
      
 
 int main(int argc, char const *argv[]) {
-    //for (int i = 0; i < NUM_REGS; i++) R[i] = 0;
-    //loadMemory(NULL);
-    
+
 
     return 0;
 }
