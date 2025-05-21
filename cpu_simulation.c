@@ -245,35 +245,73 @@ static int parse_reg(const char *tok) {
 }
 
 static uint32_t assemble_inst(char *line) {
-    char *m=strtok(line," \t,");
-    if (!m||m[0]=='#') return UINT32_MAX;
-    int op=get_opcode(m);
-    uint32_t inst=(op&0xF)<<28;
-    switch(op) {
-      case 0: case 1: case 2: case 5: case 8: case 9: {
-        int r1=parse_reg(strtok(NULL," \t,"));
-        int r2=parse_reg(strtok(NULL," \t,"));
-        int r3=parse_reg(strtok(NULL," \t,"));
-        int sh=atoi(strtok(NULL," \t,"))&0x1FFF;
-        inst|=(r1&0x1F)<<23|(r2&0x1F)<<18|(r3&0x1F)<<13|(uint32_t)sh;
+    char *mnem = strtok(line, " \t,");
+    if (!mnem || mnem[0]=='#') 
+        return UINT32_MAX;  // skip blank/comment
+
+    int opc = get_opcode(mnem);
+    uint32_t inst = (opc & 0xF) << 28;
+
+    switch (opc) {
+      /* R-format (no shift): ADD, SUB, MUL, AND */
+      case 0: case 1: case 2: case 5: {
+        int r1 = parse_reg(strtok(NULL, " \t,"));
+        int r2 = parse_reg(strtok(NULL, " \t,"));
+        int r3 = parse_reg(strtok(NULL, " \t,"));
+        inst |= (r1 & 0x1F) << 23
+             | (r2 & 0x1F) << 18
+             | (r3 & 0x1F) << 13;
         break;
       }
-      case 3: case 4: case 6: case 10: case 11: {
-        int r1=parse_reg(strtok(NULL," \t,"));
-        int r2=parse_reg(strtok(NULL," \t,"));
-        int im=atoi(strtok(NULL," \t,"))&0x3FFFF;
-        inst|=(r1&0x1F)<<23|(r2&0x1F)<<18|(uint32_t)im;
+
+      /* R-format, shift ops: LSL, LSR */
+      case 8: case 9: {
+        int r1 = parse_reg(strtok(NULL, " \t,"));
+        int r2 = parse_reg(strtok(NULL, " \t,"));
+        int sh = atoi(strtok(NULL, " \t,")) & 0x1FFF;
+        inst |= (r1 & 0x1F) << 23
+             | (r2 & 0x1F) << 18
+             |  (uint32_t)sh;
         break;
       }
+
+      /* I-format: MOVI (one reg + immediate) */
+      case 3: {
+        int r1  = parse_reg(strtok(NULL, " \t,"));
+        int imm = atoi(strtok(NULL, " \t,")) & 0x3FFFF;
+        inst |= (r1 & 0x1F) << 23
+             |  (uint32_t)imm;
+        break;
+      }
+
+      /* I-format: JEQ, XORI, MOVR, MOVM (two regs + immediate) */
+      case 4: case 6: case 10: case 11: {
+        int r1  = parse_reg(strtok(NULL, " \t,"));
+        int r2  = parse_reg(strtok(NULL, " \t,"));
+        int imm = atoi(strtok(NULL, " \t,")) & 0x3FFFF;
+        inst |= (r1 & 0x1F) << 23
+             | (r2 & 0x1F) << 18
+             |  (uint32_t)imm;
+        break;
+      }
+
+      /* J-format: JMP */
       case 7: {
-        int addr=atoi(strtok(NULL," \t,"))&0x0FFFFFFF;
-        inst|=(uint32_t)addr;
+        int addr = atoi(strtok(NULL, " \t,")) & 0x0FFFFFFF;
+        inst |= (uint32_t)addr;
         break;
       }
-      default: fprintf(stderr,"Unhandled opcode %d\n",op); exit(EXIT_FAILURE);
+
+      default:
+        fprintf(stderr, "Unhandled opcode %d\n", opc);
+        exit(EXIT_FAILURE);
     }
+
     return inst;
 }
+
+
+
 /*––– Part 3: walk the array, assemble each line, fill memory[] –––*/
 
 void translate_assembly_lines(char **lines,size_t count) {
