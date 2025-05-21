@@ -245,102 +245,106 @@ static int parse_reg(const char *tok) {
 }
 
 static uint32_t assemble_inst(char *line) {
-    // break out the first token (mnemonic)
-    char *mnem = strtok(line," \t,");
-    if (!mnem || mnem[0]=='#') return UINT32_MAX;  // skip blank/comment
-
-    int opc = get_opcode(mnem);
-    uint32_t inst = (opc & 0xF) << 28;
-
-    switch (opc) {
-      /* R-format: OPCODE R1 R2 R3 SHAMT */
+    char *m=strtok(line," \t,");
+    if (!m||m[0]=='#') return UINT32_MAX;
+    int op=get_opcode(m);
+    uint32_t inst=(op&0xF)<<28;
+    switch(op) {
       case 0: case 1: case 2: case 5: case 8: case 9: {
-        int r1 = parse_reg(strtok(NULL," \t,"));
-        int r2 = parse_reg(strtok(NULL," \t,"));
-        int r3 = parse_reg(strtok(NULL," \t,"));
-        int sh = atoi(strtok(NULL," \t,")) & 0x1FFF;
-        inst |= (r1 & 0x1F) << 23
-             | (r2 & 0x1F) << 18
-             | (r3 & 0x1F) << 13
-             |  (uint32_t)sh;
+        int r1=parse_reg(strtok(NULL," \t,"));
+        int r2=parse_reg(strtok(NULL," \t,"));
+        int r3=parse_reg(strtok(NULL," \t,"));
+        int sh=atoi(strtok(NULL," \t,"))&0x1FFF;
+        inst|=(r1&0x1F)<<23|(r2&0x1F)<<18|(r3&0x1F)<<13|(uint32_t)sh;
         break;
       }
-
-      /* I-format: OPCODE R1 R2 IMM */
       case 3: case 4: case 6: case 10: case 11: {
-        int r1  = parse_reg(strtok(NULL," \t,"));
-        int r2  = parse_reg(strtok(NULL," \t,"));
-        int imm = atoi(strtok(NULL," \t,")) & 0x3FFFF;
-        inst |= (r1 & 0x1F) << 23
-             | (r2 & 0x1F) << 18
-             |  (uint32_t)imm;
+        int r1=parse_reg(strtok(NULL," \t,"));
+        int r2=parse_reg(strtok(NULL," \t,"));
+        int im=atoi(strtok(NULL," \t,"))&0x3FFFF;
+        inst|=(r1&0x1F)<<23|(r2&0x1F)<<18|(uint32_t)im;
         break;
       }
-
-      /* J-format: OPCODE ADDRESS */
       case 7: {
-        int addr = atoi(strtok(NULL," \t,")) & 0x0FFFFFFF;
-        inst |= (uint32_t)addr;
+        int addr=atoi(strtok(NULL," \t,"))&0x0FFFFFFF;
+        inst|=(uint32_t)addr;
         break;
       }
-
-      default:
-        fprintf(stderr,"Unhandled opcode %d\n",opc);
-        exit(EXIT_FAILURE);
+      default: fprintf(stderr,"Unhandled opcode %d\n",op); exit(EXIT_FAILURE);
     }
     return inst;
 }
-
 /*––– Part 3: walk the array, assemble each line, fill memory[] –––*/
 
-void translate_assembly_lines(char **lines, size_t count) {
-    int addr = 0;
-    for (size_t i = 0; i < count; i++) {
-        // make a writable copy since assemble_inst() uses strtok()
-        char *cpy = strdup(lines[i]);
-        uint32_t code = assemble_inst(cpy);
-        free(cpy);
-
-        if (code == UINT32_MAX) continue;  // comment/blank
-
-        if (addr >= MEM_SIZE) {
-            fprintf(stderr,"Program exceeds memory size\n");
-            break;
-        }
-        memory[addr++] = (int)code;
+void translate_assembly_lines(char **lines,size_t count) {
+    int addr=0;
+    for(size_t i=0;i<count;i++){
+        char *c=strdup(lines[i]);
+        uint32_t code=assemble_inst(c);
+        free(c);
+        if(code==UINT32_MAX) continue;
+        if(addr>=MEM_SIZE) {fprintf(stderr,"Too large\n"); break;}
+        memory[addr++]=(int)code;
     }
+}
+static char *code_to_bin(uint32_t code) {
+    char *s = malloc(33);
+    if(!s) { perror("malloc"); exit(EXIT_FAILURE); }
+    for(int i=0;i<32;i++) {
+        s[i] = ((code>>(31-i))&1) ? '1' : '0';
+    }
+    s[32] = '\0';
+    return s;
+}
+
+//------------------------------------------------------------------------------
+// Translate each assembly line into 32-bit binary string array
+char **translate_lines_to_binary(char **lines, size_t count, size_t *out_count) {
+    size_t cap=16, cnt=0;
+    char **bins = malloc(cap * sizeof(char*));
+    if(!bins) { perror("malloc"); exit(EXIT_FAILURE); }
+    for(size_t i=0;i<count;i++){
+        char *c = strdup(lines[i]);
+        uint32_t code = assemble_inst(c);
+        free(c);
+        if(code==UINT32_MAX) continue;
+        char *b = code_to_bin(code);
+        if(cnt==cap) {
+            cap*=2;
+            char **tmp=realloc(bins,cap*sizeof(char*));
+            if(!tmp) { perror("realloc"); exit(EXIT_FAILURE); }
+            bins=tmp;
+        }
+        bins[cnt++] = b;
+    }
+    *out_count=cnt;
+    return bins;
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <asm-file>\n", argv[0]);
-        return EXIT_FAILURE;
-    }
-    
-    // Step 0: read all words into array
-    size_t nwords;
-    char **words = read_file_words(argv[1], &nwords);
-    if (!words) return EXIT_FAILURE;
-    
-    // Example use: print words
-    for (size_t i = 0; i < nwords; i++) {
-        printf("word[%zu] = %s\n", i, words[i]);
-        free(words[i]);
-    }
-    free(words);
-    
-    // Step 1: read assembly lines
+    if(argc!=2){ fprintf(stderr,"Usage: %s <asm-file>\n",argv[0]); return EXIT_FAILURE; }
+
+    // 1) Read assembly lines
     size_t nlines;
     char **lines = read_assembly_lines(argv[1], &nlines);
-    if (!lines) return EXIT_FAILURE;
+    if(!lines) return EXIT_FAILURE;
 
-    // Step 2: assemble into memory[]
+    // 2) Translate lines to binary strings
+    size_t nbin;
+    char **binlines = translate_lines_to_binary(lines, nlines, &nbin);
+
+    // 3) Store or print binary lines
+    for(size_t i=0; i<nbin; i++){
+        printf("%s\n", binlines[i]);
+        free(binlines[i]);
+    }
+    free(binlines);
+
+    // 4) Optionally assemble into memory
     translate_assembly_lines(lines, nlines);
 
-    // cleanup lines array
-    for (size_t i = 0; i < nlines; i++) free(lines[i]);
+    // Clean up
+    for(size_t i=0;i<nlines;i++) free(lines[i]);
     free(lines);
-
-    // (pipeline execution would go here)
     return EXIT_SUCCESS;
 }
