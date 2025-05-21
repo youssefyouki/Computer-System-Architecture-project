@@ -1,6 +1,2 @@
-# sample memory contents
-42
-  -7
-12345
-0
-999
+ADD R1 R2 R3
+MUL R4 R5 R6

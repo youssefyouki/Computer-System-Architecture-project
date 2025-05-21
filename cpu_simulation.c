@@ -157,58 +157,96 @@ void wb_stage(Pipeline *pipeline) {
         R[pipeline->temp_address] = pipeline->temp_reg;
     pipeline->wb = false;
 }
-
-void readFromFile(char *filename) {
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        exit(EXIT_FAILURE);
+char **read_file_words(const char *filename, size_t *out_count) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        perror("fopen");
+        return NULL;
     }
-char line[256];
-    int address = 0;
-
-    while (fgets(line, sizeof(line), file)) {
-        if (line[0] == '#') continue; // Skip comments
-        if (sscanf(line, "%d", &memory[address]) != 1) {
-            fprintf(stderr, "Error reading memory at address %d\n", address);
-            exit(EXIT_FAILURE);
+    size_t cap = 16, cnt = 0;
+    char **words = malloc(cap * sizeof(char*));
+    if (!words) { perror("malloc"); fclose(fp); return NULL; }
+    char buf[256];
+    while (fscanf(fp, "%255s", buf) == 1) {
+        size_t L = strlen(buf);
+        char *dup = malloc(L+1);
+        if (!dup) { perror("malloc"); break; }
+        memcpy(dup, buf, L+1);
+        if (cnt == cap) {
+            cap *= 2;
+            char **tmp = realloc(words, cap * sizeof(char*));
+            if (!tmp) { perror("realloc"); free(dup); break; }
+            words = tmp;
         }
-        address++;
+        words[cnt++] = dup;
     }
-    if(ferror(file)) {
-        perror("Error reading file");
+    if (ferror(fp)) perror("Error reading file");
+    fclose(fp);
+    *out_count = cnt;
+    return words;
+}
+#define MEM_SIZE 2048
+extern int memory[MEM_SIZE];  // your global memory[]
+
+char **read_assembly_lines(const char *filename, size_t *out_count) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) { perror("fopen"); return NULL; }
+    size_t cap = 16, cnt = 0;
+    char **lines = malloc(cap * sizeof(char*));
+    if (!lines) { perror("malloc"); fclose(fp); return NULL; }
+    char buf[256];
+    while (fgets(buf, sizeof(buf), fp)) {
+        size_t L = strlen(buf);
+        if (L && buf[L-1]=='\n') buf[--L] = '\0';
+        if (L == 0) continue;
+        char *dup = malloc(L+1);
+        if (!dup) { perror("malloc"); break; }
+        memcpy(dup, buf, L+1);
+        if (cnt == cap) {
+            cap *= 2;
+            char **tmp = realloc(lines, cap * sizeof(char*));
+            if (!tmp) { perror("realloc"); free(dup); break; }
+            lines = tmp;
+        }
+        lines[cnt++] = dup;
     }
-    fclose(file);
+    if (ferror(fp)) perror("Error reading file");
+    fclose(fp);
+    *out_count = cnt;
+    return lines;
 }
 
+/*––– Part 2: assembler helpers –––*/
+
 static int get_opcode(const char *mnem) {
-    if      (strcmp(mnem, "ADD")==0)   return 0;
-    else if (strcmp(mnem, "SUB")==0)   return 1;
-    else if (strcmp(mnem, "MUL")==0)   return 2;
-    else if (strcmp(mnem, "MOVI")==0)  return 3;
-    else if (strcmp(mnem, "JEQ")==0)   return 4;
-    else if (strcmp(mnem, "AND")==0)   return 5;
-    else if (strcmp(mnem, "XORI")==0)  return 6;
-    else if (strcmp(mnem, "JMP")==0)   return 7;
-    else if (strcmp(mnem, "LSL")==0)   return 8;
-    else if (strcmp(mnem, "LSR")==0)   return 9;
-    else if (strcmp(mnem, "MOVR")==0)  return 10;
-    else if (strcmp(mnem, "MOVM")==0)  return 11;
-    fprintf(stderr, "Unknown mnemonic '%s'\n", mnem);
+    if      (!strcmp(mnem,"ADD"))   return 0;
+    else if (!strcmp(mnem,"SUB"))   return 1;
+    else if (!strcmp(mnem,"MUL"))   return 2;
+    else if (!strcmp(mnem,"MOVI"))  return 3;
+    else if (!strcmp(mnem,"JEQ"))   return 4;
+    else if (!strcmp(mnem,"AND"))   return 5;
+    else if (!strcmp(mnem,"XORI"))  return 6;
+    else if (!strcmp(mnem,"JMP"))   return 7;
+    else if (!strcmp(mnem,"LSL"))   return 8;
+    else if (!strcmp(mnem,"LSR"))   return 9;
+    else if (!strcmp(mnem,"MOVR"))  return 10;
+    else if (!strcmp(mnem,"MOVM"))  return 11;
+    fprintf(stderr,"Unknown mnemonic '%s'\n",mnem);
     exit(EXIT_FAILURE);
 }
 
 static int parse_reg(const char *tok) {
-    if ((tok[0]=='R' || tok[0]=='r') && isdigit(tok[1])) {
+    if ((tok[0]=='R'||tok[0]=='r') && isdigit((unsigned char)tok[1])) {
         int r = atoi(tok+1);
-        if (r >= 0 && r <= 31) return r;
+        if (r>=0 && r<32) return r;
     }
-    fprintf(stderr, "Invalid register '%s'\n", tok);
+    fprintf(stderr,"Invalid register '%s'\n",tok);
     exit(EXIT_FAILURE);
 }
 
 static uint32_t assemble_inst(char *line) {
-    char *mnem = strtok(line, " \t\n");
+    // break out the first token (mnemonic)
+    char *mnem = strtok(line," \t,");
     if (!mnem || mnem[0]=='#') return UINT32_MAX;  // skip blank/comment
 
     int opc = get_opcode(mnem);
@@ -217,85 +255,92 @@ static uint32_t assemble_inst(char *line) {
     switch (opc) {
       /* R-format: OPCODE R1 R2 R3 SHAMT */
       case 0: case 1: case 2: case 5: case 8: case 9: {
-        int r1 = parse_reg(strtok(NULL, " ,\t\n"));
-        int r2 = parse_reg(strtok(NULL, " ,\t\n"));
-        int r3 = parse_reg(strtok(NULL, " ,\t\n"));
-        int sh = atoi(strtok(NULL, " ,\t\n")) & 0x1FFF;  // 13 bits
+        int r1 = parse_reg(strtok(NULL," \t,"));
+        int r2 = parse_reg(strtok(NULL," \t,"));
+        int r3 = parse_reg(strtok(NULL," \t,"));
+        int sh = atoi(strtok(NULL," \t,")) & 0x1FFF;
         inst |= (r1 & 0x1F) << 23
              | (r2 & 0x1F) << 18
              | (r3 & 0x1F) << 13
-             |  sh;
+             |  (uint32_t)sh;
         break;
       }
-      
+
+      /* I-format: OPCODE R1 R2 IMM */
+      case 3: case 4: case 6: case 10: case 11: {
+        int r1  = parse_reg(strtok(NULL," \t,"));
+        int r2  = parse_reg(strtok(NULL," \t,"));
+        int imm = atoi(strtok(NULL," \t,")) & 0x3FFFF;
+        inst |= (r1 & 0x1F) << 23
+             | (r2 & 0x1F) << 18
+             |  (uint32_t)imm;
+        break;
+      }
+
+      /* J-format: OPCODE ADDRESS */
       case 7: {
-        int addr = atoi(strtok(NULL, " ,\t\n")) & 0x0FFFFFFF;  // 28 bits
-        inst |= addr;
+        int addr = atoi(strtok(NULL," \t,")) & 0x0FFFFFFF;
+        inst |= (uint32_t)addr;
         break;
       }
+
       default:
-        fprintf(stderr, "Unhandled opcode %d\n", opc);
+        fprintf(stderr,"Unhandled opcode %d\n",opc);
         exit(EXIT_FAILURE);
     }
-
     return inst;
 }
 
-void translate_assembly(const char *filename) {
-    FILE *f = fopen(filename, "r");
-    if (!f) { perror("fopen"); exit(EXIT_FAILURE); }
+/*––– Part 3: walk the array, assemble each line, fill memory[] –––*/
 
-    char line[256];
+void translate_assembly_lines(char **lines, size_t count) {
     int addr = 0;
-    while (fgets(line, sizeof(line), f)) {
-        uint32_t code = assemble_inst(line);
-        if (code == UINT32_MAX) continue;  // skipped comment/blank
-        if (addr >= sizeof(memory)/sizeof(memory[0])) {
-            fprintf(stderr, "Program too large for memory\n");
+    for (size_t i = 0; i < count; i++) {
+        // make a writable copy since assemble_inst() uses strtok()
+        char *cpy = strdup(lines[i]);
+        uint32_t code = assemble_inst(cpy);
+        free(cpy);
+
+        if (code == UINT32_MAX) continue;  // comment/blank
+
+        if (addr >= MEM_SIZE) {
+            fprintf(stderr,"Program exceeds memory size\n");
             break;
         }
-        memory[addr++] = code;
+        memory[addr++] = (int)code;
     }
-    fclose(f);
 }
-
-
-/* (… paste your definitions of memory[], readFromFile(), etc. here …) */
 
 int main(int argc, char *argv[]) {
-    // 1. Prepare a small test file on disk
-     char *test_filename = "test_memory.txt";
-    FILE *tf = fopen(test_filename, "w");
-    if (!tf) {
-        perror("fopen");
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <asm-file>\n", argv[0]);
         return EXIT_FAILURE;
     }
-    // write 5 known values, one per line
-    fprintf(tf, "# sample memory contents\n");
-    fprintf(tf, "42\n");
-    fprintf(tf, "  -7\n");
-    fprintf(tf, "12345\n");
-    fprintf(tf, "0\n");
-    fprintf(tf, "999\n");
-    fclose(tf);
-
-    // 2. Call readFromFile
-    readFromFile(test_filename);
-
-    // 3. Check (or print) the results
-    // You can either print them:
-    for (int i = 0; i < 5; i++) {
-        printf("memory[%d] = %d\n", i, memory[i]);
+    
+    // Step 0: read all words into array
+    size_t nwords;
+    char **words = read_file_words(argv[1], &nwords);
+    if (!words) return EXIT_FAILURE;
+    
+    // Example use: print words
+    for (size_t i = 0; i < nwords; i++) {
+        printf("word[%zu] = %s\n", i, words[i]);
+        free(words[i]);
     }
+    free(words);
+    
+    // Step 1: read assembly lines
+    size_t nlines;
+    char **lines = read_assembly_lines(argv[1], &nlines);
+    if (!lines) return EXIT_FAILURE;
 
-    // … or use assertions to “fail fast” on mismatch:
-    assert(memory[0] == 42);
-    assert(memory[1] == -7);
-    assert(memory[2] == 12345);
-    assert(memory[3] == 0);
-    assert(memory[4] == 999);
+    // Step 2: assemble into memory[]
+    translate_assembly_lines(lines, nlines);
 
-    printf("readFromFile test passed!\n");
+    // cleanup lines array
+    for (size_t i = 0; i < nlines; i++) free(lines[i]);
+    free(lines);
+
+    // (pipeline execution would go here)
     return EXIT_SUCCESS;
 }
-
