@@ -429,7 +429,7 @@ void print_final_state() {
     printf("\n=== Final State ===\n");
     
     printf("\nRegister Values:\n");
-    for (int i = 0; i <= 32; i++) {
+    for (int i = 0; i < 32; i++) {
         printf("R%d: %d\n", i, R[i]);
     }
     
