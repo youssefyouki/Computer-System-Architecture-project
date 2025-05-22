@@ -457,9 +457,9 @@ int main(int argc, char const *argv[]) {
     load_instructions("program.txt");
 
     while (1) {
-        print_pipeline_state();
-        advance_pipeline();
         
+        advance_pipeline();
+        print_pipeline_state();
 
         // Check termination conditions
         bool pipeline_empty = true;
