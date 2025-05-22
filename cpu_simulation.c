@@ -6,18 +6,18 @@
 #define MEMORY_SIZE 2048
 #define INSTR_MEM_SIZE 1024
 
-int memory[MEMORY_SIZE] = {0};
-int R[32] = {0};
-int pc = 0;
+int memory[MEMORY_SIZE];
+int R[32];
+int pc ;
 bool IF = false;
 bool MEM = false;
-int clock_cycle = 1;
+int clock_cycle;
 int total_instructions = 0;
-int fetch_counter = 0;
-bool branch_taken = false;
+int fetch_counter;
+bool branch_taken;
 int branch_pc = 0;
 int branch_clock = 0;
-int instructions_completed = 0;
+int instructions_completed;
 
 typedef struct {
     int stage_clock;
@@ -46,7 +46,7 @@ void initialize_system() {
     memset(R, 0, sizeof(R));
     R[0] = 0; // Zero register
     pc = 0;
-    clock_cycle = 1;
+    clock_cycle = 0;
     fetch_counter = 0;
     branch_taken = false;
     instructions_completed = 0;
@@ -429,7 +429,7 @@ void print_final_state() {
     printf("\n=== Final State ===\n");
     
     printf("\nRegister Values:\n");
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i <= 32; i++) {
         printf("R%d: %d\n", i, R[i]);
     }
     
@@ -459,6 +459,7 @@ int main(int argc, char const *argv[]) {
     while (1) {
         print_pipeline_state();
         advance_pipeline();
+        
 
         // Check termination conditions
         bool pipeline_empty = true;
@@ -473,11 +474,7 @@ int main(int argc, char const *argv[]) {
             break;
         }
 
-        // Safety stop
-        if (clock_cycle > 1000) {
-            printf("Safety stop after 1000 cycles\n");
-            break;
-        }
+
     }
 
     print_final_state();
