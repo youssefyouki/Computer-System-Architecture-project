@@ -6,6 +6,14 @@
 #define MEMORY_SIZE 2048
 #define INSTR_MEM_SIZE 1024
 
+// Helper function to convert an integer to a binary string
+void int_to_binary_str(int num, char *str, int bits) {
+    str[bits] = '\0';  // Null terminator
+    for (int i = bits - 1; i >= 0; i--) {
+        str[bits - 1 - i] = ((num >> i) & 1) ? '1' : '0';
+    }
+}
+
 int memory[MEMORY_SIZE];
 int R[32];
 int pc ;
@@ -158,15 +166,22 @@ void decode_instruction(Pipeline *pipeline) {
             pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
             pipeline->r3 = (pipeline->temp_reg >> 11) & 0x1F;
             pipeline->shamt = (pipeline->temp_reg >> 6) & 0x1FFF;
+            printf("Cycle %d: Decoded R-type instruction: r1=%d, r2=%d, r3=%d\n", 
+                  clock_cycle, pipeline->r1, pipeline->r2, pipeline->r3);
             break;
-            
-        case 3: case 4: case 6: case 10: case 11: // I-type
+              case 3: case 4: case 6: // I-type with sign extension
             pipeline->r1 = (pipeline->temp_reg >> 21) & 0x1F;
             pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
             pipeline->immediate = pipeline->temp_reg & 0x3FFFF;
             if (pipeline->immediate & (1 << 17)) {
                 pipeline->immediate |= 0xFFFC0000;
             }
+            break;
+            
+        case 10: case 11: // MOVR, MOVM - no sign extension for memory addressing
+            pipeline->r1 = (pipeline->temp_reg >> 21) & 0x1F;
+            pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
+            pipeline->immediate = pipeline->temp_reg & 0x3FFFF; // No sign extension
             break;
             
         case 7: // J-type
@@ -181,24 +196,48 @@ void decode_instruction(Pipeline *pipeline) {
     printf("Cycle %d: Decoded %s instruction\n", clock_cycle, opcode_names[pipeline->opcode]);
 }
 
-void execute_instruction(Pipeline *pipeline) {
+void execute_instruction(Pipeline *pipeline) {    
+    // Simply use the register values without forwarding
+    int r2_value = 0;
+    int r3_value = 0;
+    
+    // Safety bounds checking for register access
+    if (pipeline->r2 >= 0 && pipeline->r2 < 32) {
+        r2_value = R[pipeline->r2];
+    } else {
+        printf("Cycle %d: Error - Invalid register R%d access\n", clock_cycle, pipeline->r2);
+    }
+    
+    if (pipeline->r3 >= 0 && pipeline->r3 < 32) {
+        r3_value = R[pipeline->r3];
+    } else {
+        printf("Cycle %d: Error - Invalid register R%d access\n", clock_cycle, pipeline->r3);
+    }
+
     switch (pipeline->opcode) {
         case 0: // ADD
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = R[pipeline->r2] + R[pipeline->r3];
+            pipeline->temp_reg = r2_value + r3_value;
+            printf("Cycle %d: ADD instruction R%d = R%d(%d) + R%d(%d) = %d\n", 
+                  clock_cycle, pipeline->r1, pipeline->r2, r2_value, 
+                  pipeline->r3, r3_value, pipeline->temp_reg);
             break;
-            
-        case 1: // SUB
+              case 1: // SUB
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = R[pipeline->r2] - R[pipeline->r3];
+            pipeline->temp_reg = r2_value - r3_value;
+            printf("Cycle %d: SUB instruction R%d = R%d(%d) - R%d(%d) = %d\n", 
+                  clock_cycle, pipeline->r1, pipeline->r2, r2_value, 
+                  pipeline->r3, r3_value, pipeline->temp_reg);
             break;
-            
-        case 2: // MUL
+              case 2: // MUL
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = R[pipeline->r2] * R[pipeline->r3];
+            pipeline->temp_reg = r2_value * r3_value;
+            printf("Cycle %d: MUL instruction R%d = R%d(%d) * R%d(%d) = %d\n", 
+                  clock_cycle, pipeline->r1, pipeline->r2, r2_value, 
+                  pipeline->r3, r3_value, pipeline->temp_reg);
             break;
             
         case 3: // MOVI
@@ -206,59 +245,64 @@ void execute_instruction(Pipeline *pipeline) {
             pipeline->temp_address = pipeline->r1;
             pipeline->temp_reg = pipeline->immediate;
             break;
-            
-        case 4: // JEQ
-            if (R[pipeline->r1] == R[pipeline->r2]) {
+              case 4: // JEQ
+            if (r2_value == r3_value) {
                 branch_taken = true;
                 branch_pc = pipeline->current_pc + 1 + pipeline->immediate;
                 branch_clock = clock_cycle;
                 printf("Cycle %d: Branch taken to address %d\n", clock_cycle, branch_pc);
             }
             break;
-            
-        case 5: // AND
+              case 5: // AND
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = R[pipeline->r2] & R[pipeline->r3];
+            pipeline->temp_reg = r2_value & r3_value;
+            printf("Cycle %d: AND instruction R%d = R%d(%d) & R%d(%d) = %d\n", 
+                  clock_cycle, pipeline->r1, pipeline->r2, r2_value, 
+                  pipeline->r3, r3_value, pipeline->temp_reg);
             break;
-            
-        case 6: // XORI
+              case 6: // XORI
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = R[pipeline->r2] ^ pipeline->immediate;
-            break;
-            
-        case 7: // JMP
+            pipeline->temp_reg = r2_value ^ pipeline->immediate;
+            printf("Cycle %d: XORI instruction R%d = R%d(%d) ^ %d = %d\n", 
+                  clock_cycle, pipeline->r1, pipeline->r2, r2_value, 
+                  pipeline->immediate, pipeline->temp_reg);
+            break;        case 7: // JMP
             branch_taken = true;
-            branch_pc = (pipeline->current_pc & 0xF0000000) | pipeline->address;
+            branch_pc = pipeline->address % INSTR_MEM_SIZE; // Ensure address is within bounds of instruction memory
             branch_clock = clock_cycle;
             printf("Cycle %d: Jumping to address %d\n", clock_cycle, branch_pc);
             break;
-            
-        case 8: // LSL
+              case 8: // LSL
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = R[pipeline->r2] << pipeline->shamt;
+            pipeline->temp_reg = r2_value << pipeline->shamt;
+            printf("Cycle %d: LSL instruction R%d = R%d(%d) << %d = %d\n", 
+                  clock_cycle, pipeline->r1, pipeline->r2, r2_value, 
+                  pipeline->shamt, pipeline->temp_reg);
             break;
-            
-        case 9: // LSR
+              case 9: // LSR
             pipeline->wb = true;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = (unsigned)R[pipeline->r2] >> pipeline->shamt;
-            break;
-            
-        case 10: // MOVR
+            pipeline->temp_reg = (unsigned)r2_value >> pipeline->shamt;
+            printf("Cycle %d: LSR instruction R%d = R%d(%d) >> %d = %d\n", 
+                  clock_cycle, pipeline->r1, pipeline->r2, r2_value, 
+                  pipeline->shamt, pipeline->temp_reg);
+            break;            case 10: // MOVR
             pipeline->mem = true;
             pipeline->write_read = 2;
             pipeline->temp_address = pipeline->r1;
-            pipeline->temp_reg = R[pipeline->r2] + pipeline->immediate;
-            break;
-            
-        case 11: // MOVM
+            pipeline->temp_reg = (R[pipeline->r2] + pipeline->immediate) % MEMORY_SIZE; // Ensure address is within bounds
+            printf("Cycle %d: MOVR instruction - Will read from Memory[%d] to R%d\n", 
+                  clock_cycle, pipeline->temp_reg, pipeline->temp_address);
+            break;            case 11: // MOVM
             pipeline->mem = true;
             pipeline->write_read = 1;
-            pipeline->temp_address = R[pipeline->r2] + pipeline->immediate;
+            pipeline->temp_address = (R[pipeline->r2] + pipeline->immediate) % MEMORY_SIZE; // Ensure address is within bounds
             pipeline->temp_reg = R[pipeline->r1];
+            printf("Cycle %d: MOVM instruction - Will store R%d(%d) to Memory[%d]\n", 
+                  clock_cycle, pipeline->r1, pipeline->temp_reg, pipeline->temp_address);
             break;
             
         default:
@@ -272,14 +316,25 @@ void mem_stage(Pipeline *pipeline) {
 
     switch (pipeline->write_read) {
         case 1: // Write to memory
-            memory[pipeline->temp_address] = pipeline->temp_reg;
-            printf("Cycle %d: Memory[%d] updated to %d\n", 
-                  clock_cycle, pipeline->temp_address, pipeline->temp_reg);
+            if (pipeline->temp_address >= 0 && pipeline->temp_address < MEMORY_SIZE) {
+                memory[pipeline->temp_address] = pipeline->temp_reg;
+                printf("Cycle %d: Memory[%d] updated to %d\n", 
+                      clock_cycle, pipeline->temp_address, pipeline->temp_reg);
+            } else {
+                printf("Cycle %d: ERROR - Memory write access out of bounds: %d\n", 
+                      clock_cycle, pipeline->temp_address);
+            }
             break;
             
         case 2: // Read from memory
             pipeline->wb = true;
-            pipeline->temp_reg = memory[pipeline->temp_reg];
+            if (pipeline->temp_reg >= 0 && pipeline->temp_reg < MEMORY_SIZE) {
+                pipeline->temp_reg = memory[pipeline->temp_reg];
+            } else {
+                printf("Cycle %d: ERROR - Memory read access out of bounds: %d\n", 
+                      clock_cycle, pipeline->temp_reg);
+                pipeline->temp_reg = 0; // Default to 0 for out-of-bounds access
+            }
             break;
             
         default:
@@ -294,7 +349,11 @@ void mem_stage(Pipeline *pipeline) {
 void wb_stage(Pipeline *pipeline) {
     if (!pipeline->wb) return;
     
-    if (pipeline->temp_address == 0) {
+    if (pipeline->temp_address < 0 || pipeline->temp_address >= 32) {
+        printf("Cycle %d: ERROR - Invalid register write attempt to R%d\n", 
+              clock_cycle, pipeline->temp_address);
+    }
+    else if (pipeline->temp_address == 0) {
         printf("Cycle %d: Attempt to write to R0 (Zero Register) - Ignored\n", clock_cycle);
     } else {
         R[pipeline->temp_address] = pipeline->temp_reg;
@@ -358,7 +417,7 @@ void pipeline_stages(Pipeline *pipeline) {
     }
 }
 
-void advance_pipeline() {
+bool advance_pipeline() {
     // Handle branch/jump flushing
     if (branch_taken && clock_cycle >= branch_clock + 2) {
         pc = branch_pc;
@@ -373,26 +432,63 @@ void advance_pipeline() {
         branch_taken = false;
     }
 
-    // Process stages in reverse order
+    // Process stages in reverse order to avoid conflicts
     for (int i = 3; i >= 0; i--) {
-        if (pipelines[i].stage != -1) {
+        if (pipelines[i].stage != -1 && pipelines[i].stage != 0) { // Skip IF stage here
             pipeline_stages(&pipelines[i]);
         }
     }
 
-    // Fetch new instruction every 2 cycles
-    if (fetch_counter % 2 == 0 && !MEM && pc < INSTR_MEM_SIZE && memory[pc] != 0) {
-        for (int i = 0; i < 4; i++) {
-            if (pipelines[i].stage == -1) {
-                memset(&pipelines[i], 0, sizeof(Pipeline));
-                pipelines[i].stage = 0;
-                break;
+    // Start new pipeline every 2 cycles and immediately fetch the instruction
+    if (pc < INSTR_MEM_SIZE && memory[pc] != 0) {
+        // Find the appropriate pipeline slot based on clock cycle
+        int pipeline_slot = -1;
+        if (clock_cycle % 2 == 1) { // Only start new pipelines on odd cycles
+            for (int i = 0; i < 4; i++) {
+                if (pipelines[i].stage == -1) {
+                    pipeline_slot = i;
+                    break;
+                }
             }
         }
-    }
 
-    clock_cycle++;
-    fetch_counter++;
+        // Start new pipeline if slot found and not blocked by MEM stage
+        if (pipeline_slot != -1 && !MEM) {
+            memset(&pipelines[pipeline_slot], 0, sizeof(Pipeline));
+            
+            // Immediately fetch the instruction in the same cycle
+            if (!(MEM || pc >= INSTR_MEM_SIZE || memory[pc] == 0)) {
+                IF = true;
+                fetch_instruction(&pipelines[pipeline_slot]);
+                pipelines[pipeline_slot].stage = 1; // Move directly to ID stage
+                pipelines[pipeline_slot].stage_clock = 0;
+                IF = false;
+                fetch_counter = 0;
+                printf("Cycle %d: Starting new pipeline in slot %d and fetched instruction\n", clock_cycle, pipeline_slot);
+            } else {
+                pipelines[pipeline_slot].stage = 0;
+                printf("Cycle %d: Starting new pipeline in slot %d\n", clock_cycle, pipeline_slot);
+            }
+        }    }    // Only increment the clock cycle if at least one pipeline stage is active
+    bool any_active_pipeline = false;
+    for (int i = 0; i < 4; i++) {
+        if (pipelines[i].stage != -1) {
+            any_active_pipeline = true;
+            break;
+        }
+    }
+    
+    // If we have no active pipelines but there are still instructions to fetch
+    if (!any_active_pipeline && pc < INSTR_MEM_SIZE && memory[pc] != 0) {
+        any_active_pipeline = true;
+    }
+    
+    if (any_active_pipeline) {
+        clock_cycle++;
+        return true; // Return true if pipeline advanced
+    }
+    
+    return false; // Return false if no activity
 }
 
 void print_pipeline_state() {
@@ -434,20 +530,23 @@ void print_final_state() {
     }
     
     printf("\nInstruction Memory Contents (non-zero):\n");
+    char binary[33];  // 32 bits + null terminator
     for (int i = 0; i < INSTR_MEM_SIZE; i++) {
         if (memory[i] != 0) {
-            printf("[%d]: %08x\n", i, memory[i]);
+            int_to_binary_str(memory[i], binary, 32);
+            printf("[%d]: %s\n", i, binary);
         }
     }
     
     printf("\nData Memory Contents (non-zero):\n");
     for (int i = INSTR_MEM_SIZE; i < MEMORY_SIZE; i++) {
         if (memory[i] != 0) {
-            printf("[%d]: %d\n", i, memory[i]);
+            int_to_binary_str(memory[i], binary, 32);
+            printf("[%d]: %s\n", i, binary);
         }
     }
     
-    printf("\nTotal Clock Cycles: %d\n", clock_cycle - 1);
+    printf("\nTotal Clock Cycles: %d\n", clock_cycle);
     printf("Total Instructions Executed: %d\n", instructions_completed);
 }
 
@@ -455,12 +554,13 @@ int main(int argc, char const *argv[]) {
 
     initialize_system();
     load_instructions("program.txt");
-
-    while (1) {
+    bool done = false;
+    bool activity;
+    
+    while (!done) {
+        // Advance pipeline and check if there was any activity
+        activity = advance_pipeline();
         
-        advance_pipeline();
-        print_pipeline_state();
-
         // Check termination conditions
         bool pipeline_empty = true;
         for (int i = 0; i < 4; i++) {
@@ -470,11 +570,18 @@ int main(int argc, char const *argv[]) {
             }
         }
         
+        // End simulation if there are no active pipelines and no more instructions
         if (pipeline_empty && (pc >= INSTR_MEM_SIZE || memory[pc] == 0)) {
-            break;
+            if (!activity) {
+                // If no activity occurred, we don't need another iteration
+                done = true;
+                printf("No active pipelines and no more instructions to fetch. Simulation complete.\n");
+                break; // Skip printing the state one last time
+            }
         }
-
-
+        
+        // Only print pipeline state if we're not done
+        print_pipeline_state();
     }
 
     print_final_state();
