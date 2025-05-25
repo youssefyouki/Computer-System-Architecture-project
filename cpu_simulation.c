@@ -8,15 +8,16 @@
 
 // Helper function to convert an integer to a binary string
 void int_to_binary_str(int num, char *str, int bits) {
-    str[bits] = '\0';  // Null terminator
+    str[bits] = '\0';
     for (int i = bits - 1; i >= 0; i--) {
         str[bits - 1 - i] = ((num >> i) & 1) ? '1' : '0';
     }
 }
 
+// Global system state variables
 int memory[MEMORY_SIZE];
 int R[32];
-int pc ;
+int pc;
 bool IF = false;
 bool MEM = false;
 int clock_cycle;
@@ -27,12 +28,13 @@ int branch_pc = 0;
 int branch_clock = 0;
 int instructions_completed;
 
+// Pipeline structure
 typedef struct {
     int stage_clock;
     bool wb;
     bool mem;
     int write_read;
-    int stage;
+    int stage;           // -1=inactive, 0=IF, 1=ID, 2=EX, 3=MEM, 4=WB
     int temp_reg;
     int temp_address;
     int opcode;
@@ -44,21 +46,24 @@ typedef struct {
 } Pipeline;
 Pipeline pipelines[4];
 
+// Array of instruction names for debug output
 const char* opcode_names[] = {
     "ADD", "SUB", "MUL", "MOVI", "JEQ", "AND",
     "XORI", "JMP", "LSL", "LSR", "MOVR", "MOVM"
 };
 
+// Initialize the CPU and memory system
 void initialize_system() {
     memset(memory, 0, sizeof(memory));
     memset(R, 0, sizeof(R));
-    R[0] = 0; // Zero register
+    R[0] = 0;  // Zero register
     pc = 0;
     clock_cycle = 0;
     fetch_counter = 0;
     branch_taken = false;
     instructions_completed = 0;
 
+    // Initialize all pipeline slots
     for (int i = 0; i < 4; i++) {
         pipelines[i].stage = -1;
         pipelines[i].stage_clock = 0;
@@ -70,6 +75,7 @@ void initialize_system() {
     }
 }
 
+// Load assembly instructions from file into memory
 void load_instructions(const char* filename) {
     FILE* file = fopen(filename, "r");
     if (!file) {
@@ -148,6 +154,7 @@ void load_instructions(const char* filename) {
     fclose(file);
 }
 
+// Fetch instruction from memory
 void fetch_instruction(Pipeline *pipeline) {
     if (pc >= INSTR_MEM_SIZE || memory[pc] == 0) return;
     
@@ -169,19 +176,21 @@ void decode_instruction(Pipeline *pipeline) {
             printf("Cycle %d: Decoded R-type instruction: r1=%d, r2=%d, r3=%d\n", 
                   clock_cycle, pipeline->r1, pipeline->r2, pipeline->r3);
             break;
-              case 3: case 4: case 6: // I-type with sign extension
+
+        case 3: case 4: case 6: // I-type with sign extension
             pipeline->r1 = (pipeline->temp_reg >> 21) & 0x1F;
             pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
             pipeline->immediate = pipeline->temp_reg & 0x3FFFF;
+            // Sign extension
             if (pipeline->immediate & (1 << 17)) {
                 pipeline->immediate |= 0xFFFC0000;
             }
             break;
             
-        case 10: case 11: // MOVR, MOVM - no sign extension for memory addressing
+        case 10: case 11: // MOVR, MOVM (no sign extension)
             pipeline->r1 = (pipeline->temp_reg >> 21) & 0x1F;
             pipeline->r2 = (pipeline->temp_reg >> 16) & 0x1F;
-            pipeline->immediate = pipeline->temp_reg & 0x3FFFF; // No sign extension
+            pipeline->immediate = pipeline->temp_reg & 0x3FFFF;
             break;
             
         case 7: // J-type
@@ -197,11 +206,10 @@ void decode_instruction(Pipeline *pipeline) {
 }
 
 void execute_instruction(Pipeline *pipeline) {    
-    // Simply use the register values without forwarding
     int r2_value = 0;
     int r3_value = 0;
     
-    // Safety bounds checking for register access
+    // Safety bounds checking
     if (pipeline->r2 >= 0 && pipeline->r2 < 32) {
         r2_value = R[pipeline->r2];
     } else {
@@ -333,7 +341,7 @@ void mem_stage(Pipeline *pipeline) {
             } else {
                 printf("Cycle %d: ERROR - Memory read access out of bounds: %d\n", 
                       clock_cycle, pipeline->temp_reg);
-                pipeline->temp_reg = 0; // Default to 0 for out-of-bounds access
+                pipeline->temp_reg = 0;
             }
             break;
             
@@ -342,10 +350,12 @@ void mem_stage(Pipeline *pipeline) {
             break;
     }
 
+    // Reset memory operation flags
     pipeline->mem = false;
     pipeline->write_read = 0;
 }
 
+// Write-back stage
 void wb_stage(Pipeline *pipeline) {
     if (!pipeline->wb) return;
     
@@ -355,18 +365,20 @@ void wb_stage(Pipeline *pipeline) {
     }
     else if (pipeline->temp_address == 0) {
         printf("Cycle %d: Attempt to write to R0 (Zero Register) - Ignored\n", clock_cycle);
-    } else {
+    } 
+    else {
         R[pipeline->temp_address] = pipeline->temp_reg;
         printf("Cycle %d: R%d updated to %d\n", 
               clock_cycle, pipeline->temp_address, pipeline->temp_reg);
     }
+    
     pipeline->wb = false;
     instructions_completed++;
 }
 
 void pipeline_stages(Pipeline *pipeline) {
     switch (pipeline->stage) {
-        case 0: // IF
+        case 0: // IF - Instruction Fetch stage
             if (MEM || pc >= INSTR_MEM_SIZE || memory[pc] == 0) {
                 printf("Cycle %d: IF stalled\n", clock_cycle);
                 return;
@@ -379,7 +391,7 @@ void pipeline_stages(Pipeline *pipeline) {
             fetch_counter = 0;
             break;
             
-        case 1: // ID (2 cycles)
+        case 1: // ID - Instruction Decode stage (2 cycles)
             if (pipeline->stage_clock < 1) {
                 decode_instruction(pipeline);
                 pipeline->stage_clock++;
@@ -388,8 +400,7 @@ void pipeline_stages(Pipeline *pipeline) {
                 pipeline->stage_clock = 0;
             }
             break;
-            
-        case 2: // EX (2 cycles)
+              case 2: // EX (2 cycles)
             if (pipeline->stage_clock < 1) {
                 execute_instruction(pipeline);
                 pipeline->stage_clock++;
@@ -424,7 +435,7 @@ bool advance_pipeline() {
         printf("Cycle %d: Flushing pipeline after branch/jump to PC=%d\n", clock_cycle, pc);
         
         for (int i = 0; i < 4; i++) {
-            if (pipelines[i].stage < 2) {
+            if (pipelines[i].stage < 2) {  // Only flush IF and ID stages
                 memset(&pipelines[i], 0, sizeof(Pipeline));
                 pipelines[i].stage = -1;
             }
@@ -450,13 +461,12 @@ bool advance_pipeline() {
                     break;
                 }
             }
-        }
-
-        // Start new pipeline if slot found and not blocked by MEM stage
+        }        // Start new pipeline if slot found and not blocked by MEM stage
         if (pipeline_slot != -1 && !MEM) {
+            // Initialize the pipeline slot
             memset(&pipelines[pipeline_slot], 0, sizeof(Pipeline));
             
-            // Immediately fetch the instruction in the same cycle
+            // Immediately fetch the instruction in the same cycle if possible
             if (!(MEM || pc >= INSTR_MEM_SIZE || memory[pc] == 0)) {
                 IF = true;
                 fetch_instruction(&pipelines[pipeline_slot]);
@@ -469,7 +479,7 @@ bool advance_pipeline() {
                 pipelines[pipeline_slot].stage = 0;
                 printf("Cycle %d: Starting new pipeline in slot %d\n", clock_cycle, pipeline_slot);
             }
-        }    }    // Only increment the clock cycle if at least one pipeline stage is active
+        }    }// Only increment the clock cycle if at least one pipeline stage is active
     bool any_active_pipeline = false;
     for (int i = 0; i < 4; i++) {
         if (pipelines[i].stage != -1) {
@@ -506,10 +516,13 @@ void print_pipeline_state() {
             case 4: printf("WB"); break;
         }
         
+        // Show instruction details if available
         if (pipelines[i].opcode >= 0 && pipelines[i].opcode < 12) {
             printf(" (%s)", opcode_names[pipelines[i].opcode]);
+            // Show register operands for instructions in ID or EX stages
             if (pipelines[i].stage >= 1 && pipelines[i].stage <= 2) {
                 printf(" R%d,R%d", pipelines[i].r1, pipelines[i].r2);
+                // Show third register for R-type instructions
                 if (pipelines[i].opcode != 3 && pipelines[i].opcode != 4 && 
                     pipelines[i].opcode != 6 && pipelines[i].opcode != 7 &&
                     pipelines[i].opcode != 10 && pipelines[i].opcode != 11) {
@@ -530,7 +543,7 @@ void print_final_state() {
     }
     
     printf("\nInstruction Memory Contents (non-zero):\n");
-    char binary[33];  // 32 bits + null terminator
+    char binary[33];
     for (int i = 0; i < INSTR_MEM_SIZE; i++) {
         if (memory[i] != 0) {
             int_to_binary_str(memory[i], binary, 32);
@@ -558,11 +571,8 @@ int main(int argc, char const *argv[]) {
     bool activity;
     
     while (!done) {
-        // Advance pipeline and check if there was any activity
         activity = advance_pipeline();
-        
-        // Check termination conditions
-        bool pipeline_empty = true;
+          bool pipeline_empty = true;
         for (int i = 0; i < 4; i++) {
             if (pipelines[i].stage != -1) {
                 pipeline_empty = false;
@@ -570,17 +580,14 @@ int main(int argc, char const *argv[]) {
             }
         }
         
-        // End simulation if there are no active pipelines and no more instructions
         if (pipeline_empty && (pc >= INSTR_MEM_SIZE || memory[pc] == 0)) {
             if (!activity) {
-                // If no activity occurred, we don't need another iteration
                 done = true;
                 printf("No active pipelines and no more instructions to fetch. Simulation complete.\n");
-                break; // Skip printing the state one last time
+                break;
             }
         }
         
-        // Only print pipeline state if we're not done
         print_pipeline_state();
     }
 
